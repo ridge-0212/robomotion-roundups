@@ -40,6 +40,11 @@ jobs:
           GOOS=darwin  GOARCH=amd64 go build -o dist/pkg-darwin-amd64
           GOOS=darwin  GOARCH=arm64 go build -o dist/pkg-darwin-arm64
 
+      - name: Generate spec file
+        run: |
+          chmod +x dist/pkg-linux-amd64
+          dist/pkg-linux-amd64 -s > dist/robomotion-roundups.pspec
+
       - name: Package into .tgz
         run: |
           cd dist && tar -czf package.tgz pkg-*
@@ -47,14 +52,28 @@ jobs:
       - name: Generate index
         run: |
           cd dist
-          echo '{"packages":[]}' > index.json
-          for tgz in *.tgz; do
-            SHA=$(sha256sum "$tgz" | awk '{print $1}')
-            SIZE=$(stat -c%s "$tgz")
-            jq --arg name "$tgz" --arg sha "$SHA" --argjson size "$SIZE" \
-              '.packages += [{"filename":$name,"sha256":$sha,"size":$size}]' \
-              index.json > index.tmp && mv index.tmp index.json
-          done
+          SHA=$(sha256sum package.tgz | awk '{print $1}')
+          SIZE=$(stat -c%s package.tgz)
+          SPEC_SHA=$(sha256sum robomotion-roundups.pspec | awk '{print $1}')
+          SPEC_SIZE=$(stat -c%s robomotion-roundups.pspec)
+          jq -n \
+            --arg spec "robomotion-roundups.pspec" \
+            --arg specSha "$SPEC_SHA" --argjson specSize "$SPEC_SIZE" \
+            --arg tgz "package.tgz" \
+            --arg tgzSha "$SHA" --argjson tgzSize "$SIZE" \
+            '{
+              packages: [{
+                name: "Roundups AI",
+                namespace: "Robomotion.Roundups",
+                version: "1.0.0",
+                spec: $spec,
+                specSha256: $specSha,
+                specSize: $specSize,
+                filename: $tgz,
+                sha256: $tgzSha,
+                size: $tgzSize
+              }]
+            }' > index.json
           sha256sum index.json > index.sha256sum
 
       - name: Deploy to GitHub Pages
