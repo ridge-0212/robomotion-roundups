@@ -1,0 +1,16 @@
+{
+  "name": "Roundups AI",
+  "namespace": "Robomotion.Roundups",
+  "version": "1.0.0",
+  "keywords": ["roundups", "ai", "article", "content", "generation", "product"],
+  "categories": ["AI & ML"],
+  "description": "Generate AI-powered roundup articles with Roundups.ai",
+  "language": "Go",
+  "platforms": ["linux", "windows", "darwin"],
+  "author": { "name": "Robomotion", "email": "info@robomotion.io" },
+  "scripts": {
+    "linux":   { "build": ["go build -o dist/robomotion-roundups"], "run": "robomotion-roundups" },
+    "windows": { "build": ["go build -o dist/robomotion-roundups.exe"], "run": "robomotion-roundups.exe" },
+    "darwin":  { "build": ["go build -o dist/robomotion-roundups"], "run": "robomotion-roundups" }
+  }
+}

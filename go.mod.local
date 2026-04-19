@@ -1,0 +1,5 @@
+# Local development: restore the replace directive
+# Run this after cloning:
+#   cp go.mod.local go.mod
+#   go mod tidy
+# This points to the sibling robomotion-go SDK directory.
