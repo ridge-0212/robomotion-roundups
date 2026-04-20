@@ -55,6 +55,14 @@ jobs:
       - name: Generate index
         run: |
           cd dist
+          VERSION=$(jq -r '.version' ../config.json)
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            if [[ "$TAG_VERSION" != "$VERSION" ]]; then
+              echo "Tag version ($TAG_VERSION) does not match config.json version ($VERSION)" >&2
+              exit 1
+            fi
+          fi
           SHA=$(sha256sum package.tgz | awk '{print $1}')
           SIZE=$(stat -c%s package.tgz)
           SPEC_SHA=$(sha256sum robomotion-roundups.pspec | awk '{print $1}')
@@ -64,11 +72,12 @@ jobs:
             --arg specSha "$SPEC_SHA" --argjson specSize "$SPEC_SIZE" \
             --arg tgz "package.tgz" \
             --arg tgzSha "$SHA" --argjson tgzSize "$SIZE" \
+            --arg version "$VERSION" \
             '{
               packages: [{
                 name: "Roundups AI",
                 namespace: "Robomotion.Roundups",
-                version: "1.0.0",
+                version: $version,
                 spec: $spec,
                 specSha256: $specSha,
                 specSize: $specSize,
