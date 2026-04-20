@@ -35,19 +35,22 @@ jobs:
 
       - name: Build for all platforms
         run: |
-          GOOS=linux   GOARCH=amd64 go build -o dist/pkg-linux-amd64
-          GOOS=windows GOARCH=amd64 go build -o dist/pkg-windows-amd64.exe
-          GOOS=darwin  GOARCH=amd64 go build -o dist/pkg-darwin-amd64
-          GOOS=darwin  GOARCH=arm64 go build -o dist/pkg-darwin-arm64
+          GOOS=linux   GOARCH=amd64 go build -o dist/robomotion-roundups
+          GOOS=windows GOARCH=amd64 go build -o dist/robomotion-roundups.exe
+          GOOS=darwin  GOARCH=amd64 go build -o dist/robomotion-roundups-darwin-amd64
+          GOOS=darwin  GOARCH=arm64 go build -o dist/robomotion-roundups-darwin-arm64
+
+      - name: Copy config
+        run: cp config.json dist/config.json
 
       - name: Generate spec file
         run: |
-          chmod +x dist/pkg-linux-amd64
-          dist/pkg-linux-amd64 -s > dist/robomotion-roundups.pspec
+          chmod +x dist/robomotion-roundups
+          dist/robomotion-roundups -s > dist/robomotion-roundups.pspec
 
       - name: Package into .tgz
         run: |
-          cd dist && tar -czf package.tgz pkg-*
+          cd dist && tar -czf package.tgz config.json robomotion-roundups robomotion-roundups.exe robomotion-roundups-darwin-*
 
       - name: Generate index
         run: |
