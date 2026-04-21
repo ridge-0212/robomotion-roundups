@@ -33,6 +33,12 @@ jobs:
           go mod edit -replace github.com/robomotionio/robomotion-go=/opt/robomotion-go
           go mod tidy
 
+      - name: Install roboctl
+        run: |
+          curl -L -o /tmp/roboctl.tar.gz https://packages.robomotion.io/releases/roboctl/roboctl-v1.8.0-linux-amd64.tar.gz
+          tar -xzf /tmp/roboctl.tar.gz -C /usr/local/bin
+          roboctl version
+
       - name: Build for all platforms
         run: |
           CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -o dist/robomotion-roundups
@@ -55,23 +61,9 @@ jobs:
         run: |
           cd dist && tar -czf robomotion-roundups.tgz config.json robomotion-roundups robomotion-roundups.exe robomotion-roundups-darwin-*
 
-      - name: Generate index
+      - name: Generate index with roboctl
         run: |
-          cd dist
-          GENERATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          NAME=$(jq -r '.name' ../config.json)
-          NAMESPACE=$(jq -r '.namespace' ../config.json)
-          VERSION=$(jq -r '.version' ../config.json)
-          SPEC_FILE="${NAMESPACE}-${VERSION}.pspec"
-          PACKAGE_KEY=$(printf '%s' "$NAMESPACE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '.')
-          AUTHOR=$(jq -c '.author // null' ../config.json)
-          CATEGORIES=$(jq -c '.categories // []' ../config.json)
-          CATEGORY=$(jq -c '.category // null' ../config.json)
-          DESCRIPTION=$(jq -c '.description // null' ../config.json)
-          ICON=$(jq -c '.icon // null' ../config.json)
-          KEYWORDS=$(jq -c '.keywords // []' ../config.json)
-          LANGUAGE=$(jq -c '.language // null' ../config.json)
-          PLATFORMS=$(jq -c '.platforms // []' ../config.json)
+          VERSION=$(jq -r '.version' config.json)
           if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
             TAG_VERSION="${GITHUB_REF#refs/tags/v}"
             if [[ "$TAG_VERSION" != "$VERSION" ]]; then
@@ -79,54 +71,8 @@ jobs:
               exit 1
             fi
           fi
-          SHA=$(sha256sum robomotion-roundups.tgz | awk '{print $1}')
-          SIZE=$(stat -c%s robomotion-roundups.tgz)
-          SPEC_SHA=$(sha256sum "$SPEC_FILE" | awk '{print $1}')
-          SPEC_SIZE=$(stat -c%s "$SPEC_FILE")
-          jq -n \
-            --arg generated "$GENERATED" \
-            --arg name "$NAME" \
-            --arg namespace "$NAMESPACE" \
-            --arg packageKey "$PACKAGE_KEY" \
-            --arg spec "$SPEC_FILE" \
-            --arg specSha "$SPEC_SHA" --argjson specSize "$SPEC_SIZE" \
-            --arg tgz "robomotion-roundups.tgz" \
-            --arg tgzSha "$SHA" --argjson tgzSize "$SIZE" \
-            --arg version "$VERSION" \
-            --argjson author "$AUTHOR" \
-            --argjson categories "$CATEGORIES" \
-            --argjson category "$CATEGORY" \
-            --argjson description "$DESCRIPTION" \
-            --argjson icon "$ICON" \
-            --argjson keywords "$KEYWORDS" \
-            --argjson language "$LANGUAGE" \
-            --argjson platforms "$PLATFORMS" \
-            '{
-              generated: $generated,
-              packages: {
-                ($packageKey): {
-                  author: $author,
-                  categories: $categories,
-                  category: $category,
-                  description: $description,
-                  icon: $icon,
-                  keywords: $keywords,
-                  language: $language,
-                  name: $name,
-                  namespace: $namespace,
-                  path: "",
-                  platforms: $platforms,
-                  version: $version,
-                  versions: [$version],
-                  spec: $spec,
-                  specSha256: $specSha,
-                  specSize: $specSize,
-                  filename: $tgz,
-                  sha256: $tgzSha,
-                  size: $tgzSize
-                }
-              }
-            }' > index.json
+          cd dist
+          roboctl repo index
           sha256sum index.json > index.sha256sum
 
       - name: Deploy to GitHub Pages
