@@ -2,136 +2,111 @@ package v1
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"time"
 
 	"github.com/robomotionio/robomotion-go/message"
 	"github.com/robomotionio/robomotion-go/runtime"
 )
 
+// FetchRoundup fetches the status and article content of a previously created roundup.
 type FetchRoundup struct {
-	runtime.Node `spec:"id=Robomotion.Roundups.Fetch,name=Fetch Roundup,icon=mdiFileDownload,color=#6C5CE7"`
+	runtime.Node `spec:"id=Robomotion.Roundups.FetchRoundup,name=Fetch Roundup,icon=mdiDownload,color=#6C5CE7"`
 
-	// === INPUTS ===
-	InRoundupID runtime.InVariable[string] `spec:"title=Roundup ID,type=string,scope=Message,name=roundupId,messageScope,jsScope,customScope,description=The roundup ID from Create Roundup"`
+	// Credential
+	OptAPIKey runtime.Credential `spec:"title=API Key,scope=Custom,category=4,messageScope,customScope"`
 
-	// === OPTIONAL INPUTS ===
-	OptTimeout runtime.OptVariable[int] `spec:"title=Poll Timeout (seconds),type=int,scope=Message,name=timeout,value=300,messageScope,customScope,jsScope,description=Max time to wait for generation (default 300s)"`
-	OptPollInterval runtime.OptVariable[int] `spec:"title=Poll Interval (seconds),type=int,scope=Message,name=pollInterval,value=10,messageScope,customScope,jsScope,description=Seconds between status checks (default 10s)"`
+	// Input
+	InRoundupID runtime.InVariable[int] `spec:"title=Roundup ID,type=int,scope=Message,name=roundupId,messageScope,jsScope,customScope,description=The ID of the roundup to fetch"`
 
-	// === CREDENTIAL ===
-	OptAPIKey runtime.Credential `spec:"title=API Key,scope=Custom,category=4,customScope,messageScope"`
-
-	// === OUTPUTS ===
-	OutTitle runtime.OutVariable[string] `spec:"title=Title,type=string,scope=Message,name=title,messageScope"`
-	OutContent runtime.OutVariable[string] `spec:"title=Content,type=string,scope=Message,name=content,messageScope"`
-	OutFeaturedImage runtime.OutVariable[string] `spec:"title=Featured Image,type=string,scope=Message,name=featuredImage,messageScope"`
-	OutMetaDescription runtime.OutVariable[string] `spec:"title=Meta Description,type=string,scope=Message,name=metaDescription,messageScope"`
-	OutState runtime.OutVariable[string] `spec:"title=State,type=string,scope=Message,name=state,messageScope"`
-	OutArticle runtime.OutVariable[interface{}] `spec:"title=Article (Full),type=object,scope=Message,name=article,messageScope"`
+	// Outputs
+	OutState     runtime.OutVariable[string]      `spec:"title=State,type=string,scope=Message,name=state,messageScope"`
+	OutHeadline  runtime.OutVariable[string]      `spec:"title=Headline,type=string,scope=Message,name=headline,messageScope"`
+	OutTitle     runtime.OutVariable[string]      `spec:"title=Article Title,type=string,scope=Message,name=articleTitle,messageScope"`
+	OutContent   runtime.OutVariable[string]      `spec:"title=Article Content,type=string,scope=Message,name=articleContent,messageScope"`
+	OutImageURL  runtime.OutVariable[string]      `spec:"title=Featured Image URL,type=string,scope=Message,name=featuredImage,messageScope"`
+	OutMetaDesc  runtime.OutVariable[string]      `spec:"title=Meta Description,type=string,scope=Message,name=metaDescription,messageScope"`
+	OutResponse  runtime.OutVariable[interface{}] `spec:"title=Full Response,type=object,scope=Message,name=response,messageScope"`
+	OutErrors    runtime.OutVariable[string]      `spec:"title=Errors,type=string,scope=Message,name=errors,messageScope"`
 }
 
 func (n *FetchRoundup) OnCreate() error { return nil }
 
 func (n *FetchRoundup) OnMessage(ctx message.Context) error {
+	// Get API key
+	item, err := n.OptAPIKey.Get(ctx)
+	if err != nil {
+		return err
+	}
+
+	token, ok := item["value"].(string)
+	if !ok || token == "" {
+		return runtime.NewError("ErrInvalidArg", "Missing API Key value")
+	}
+
+	client := NewRoundupsClient(token)
+
+	// Get roundup ID
 	roundupID, err := n.InRoundupID.Get(ctx)
 	if err != nil {
 		return err
 	}
+	if roundupID <= 0 {
+		return runtime.NewError("ErrInvalidArg", "Roundup ID must be a positive integer")
+	}
 
-	cred, err := n.OptAPIKey.Get(ctx)
+	// Call API
+	resp, err := client.FetchRoundup(roundupID)
 	if err != nil {
 		return err
 	}
-	if cred == nil {
-		return runtime.NewError("ErrInvalidArg", "API Key is required")
-	}
-	apiKey, _ := cred["value"].(string)
 
-	timeoutSec, _ := n.OptTimeout.Get(ctx)
-	if timeoutSec <= 0 {
-		timeoutSec = 300
+	// Set outputs
+	if err := n.OutState.Set(ctx, resp.State); err != nil {
+		return err
 	}
-	pollSec, _ := n.OptPollInterval.Get(ctx)
-	if pollSec <= 0 {
-		pollSec = 10
+	if err := n.OutHeadline.Set(ctx, resp.Headline); err != nil {
+		return err
 	}
 
-	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
-	url := fmt.Sprintf("https://roundups.ai/api/v1/roundups/%s", roundupID)
-	client := &http.Client{}
-
-	for time.Now().Before(deadline) {
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return runtime.NewError("ErrRequestFailed", "Failed to create request: "+err.Error())
-		}
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return runtime.NewError("ErrRequestFailed", "HTTP request failed: "+err.Error())
-		}
-
-		respBody, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return runtime.NewError("ErrResponseRead", "Failed to read response: "+err.Error())
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			return runtime.NewError("ErrRequestFailed", fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(respBody)))
-		}
-
-		var result map[string]interface{}
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return runtime.NewError("ErrInvalidJSON", "Failed to parse response JSON: "+err.Error())
-		}
-
-		state, _ := result["state"].(string)
-
-		if err := n.OutState.Set(ctx, state); err != nil {
+	// Article fields (may be null if still generating)
+	if resp.Article != nil {
+		if err := n.OutTitle.Set(ctx, resp.Article.Title); err != nil {
 			return err
 		}
-
-		if err := n.OutArticle.Set(ctx, result); err != nil {
+		if err := n.OutContent.Set(ctx, resp.Article.Content); err != nil {
 			return err
 		}
-
-		if state == "draft" {
-			article, _ := result["article"].(map[string]interface{})
-			if article != nil {
-				title, _ := article["title"].(string)
-				content, _ := article["content"].(string)
-				featuredImage, _ := article["featured_image"].(string)
-				metaDesc, _ := article["meta_description"].(string)
-
-				if err := n.OutTitle.Set(ctx, title); err != nil {
-					return err
-				}
-				if err := n.OutContent.Set(ctx, content); err != nil {
-					return err
-				}
-				if err := n.OutFeaturedImage.Set(ctx, featuredImage); err != nil {
-					return err
-				}
-				if err := n.OutMetaDescription.Set(ctx, metaDesc); err != nil {
-					return err
-				}
-			}
-			return nil
+		if err := n.OutImageURL.Set(ctx, resp.Article.FeaturedImage); err != nil {
+			return err
 		}
-
-		if state == "timeout" {
-			return runtime.NewError("ErrRequestFailed", "Roundup generation timed out on the server")
+		if err := n.OutMetaDesc.Set(ctx, resp.Article.MetaDescription); err != nil {
+			return err
 		}
-
-		time.Sleep(time.Duration(pollSec) * time.Second)
 	}
 
-	return runtime.NewError("ErrRequestFailed", fmt.Sprintf("Polling timed out after %d seconds", timeoutSec))
+	// Errors field
+	if resp.Errors != nil {
+		if err := n.OutErrors.Set(ctx, *resp.Errors); err != nil {
+			return err
+		}
+	}
+
+	// Full response as JSON
+	respJSON, _ := json.Marshal(map[string]interface{}{
+		"id":         resp.ID,
+		"headline":   resp.Headline,
+		"state":      resp.State,
+		"created_at": resp.CreatedAt,
+		"updated_at": resp.UpdatedAt,
+		"article":    resp.Article,
+		"errors":     resp.Errors,
+	})
+	var respMap map[string]interface{}
+	json.Unmarshal(respJSON, &respMap)
+	if err := n.OutResponse.Set(ctx, respMap); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (n *FetchRoundup) OnClose() error { return nil }

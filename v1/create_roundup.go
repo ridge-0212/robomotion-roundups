@@ -1,173 +1,263 @@
 package v1
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 
 	"github.com/robomotionio/robomotion-go/message"
 	"github.com/robomotionio/robomotion-go/runtime"
 )
 
+// CreateRoundup creates a new roundup and starts generation in the background.
 type CreateRoundup struct {
-	runtime.Node `spec:"id=Robomotion.Roundups.Create,name=Create Roundup,icon=mdiFileDocumentEdit,color=#6C5CE7"`
+	runtime.Node `spec:"id=Robomotion.Roundups.CreateRoundup,name=Create Roundup,icon=mdiNewspaperVariant,color=#6C5CE7"`
 
-	// === REQUIRED INPUTS ===
-	InHeadline runtime.InVariable[string] `spec:"title=Headline,type=string,scope=Message,name=headline,messageScope,jsScope,customScope,description=The headline for the roundup article"`
-	InTargetAudience runtime.InVariable[string] `spec:"title=Target Audience,type=string,scope=Message,name=targetAudience,messageScope,jsScope,customScope,description=Who is this roundup for"`
-	InKeywords runtime.InVariable[string] `spec:"title=Keywords,type=string,scope=Message,name=keywords,messageScope,jsScope,customScope,description=Comma-separated keywords for the roundup"`
+	// Credential
+	OptAPIKey runtime.Credential `spec:"title=API Key,scope=Custom,category=4,messageScope,customScope"`
 
-	// === OPTIONAL INPUTS ===
-	OptProductsCount runtime.OptVariable[int] `spec:"title=Products Count,type=int,scope=Message,name=productsCount,value=5,messageScope,customScope,jsScope,description=Number of products to include (1-10)"`
-	OptSearchQueries runtime.OptVariable[string] `spec:"title=Search Queries,type=string,scope=Message,name=searchQueries,messageScope,customScope,jsScope,description=Comma-separated product search queries"`
-	OptAmazonASINs runtime.OptVariable[string] `spec:"title=Amazon ASINs,type=string,scope=Message,name=amazonAsins,messageScope,customScope,jsScope,description=Comma-separated Amazon product ASINs"`
-	OptProductURLs runtime.OptVariable[string] `spec:"title=Product URLs,type=string,scope=Message,name=productUrls,messageScope,customScope,jsScope,description=Comma-separated product URLs"`
+	// Input parameters (at least one of headline/targetAudience/keywords must be provided)
+	OptHeadline          runtime.OptVariable[string]       `spec:"title=Headline,type=string,scope=Message,name=headline,messageScope,jsScope,customScope,description=Article headline for the roundup"`
+	OptTargetAudience    runtime.OptVariable[string]       `spec:"title=Target Audience,type=string,scope=Message,name=targetAudience,messageScope,jsScope,customScope,description=Target audience description"`
+	OptKeywords          runtime.OptVariable[string]       `spec:"title=Keywords,type=string,scope=Message,name=keywords,messageScope,jsScope,customScope,description=Keywords for product search"`
 
-	// === OPTIONS ===
-	OptProductType string `spec:"title=Product Type,value=unified,enum=amazon|appsumo|envato|unified,option,description=Product source platform"`
-	OptTone string `spec:"title=Tone of Voice,value=professional,enum=professional|casual|friendly|formal|humorous|persuasive|academic|conversational|authoritative|enthusiastic|neutral,option,description=Writing style for the article"`
-	OptLanguage string `spec:"title=Language,value=en,enum=ar|bg|cs|da|de|el|en|es|et|fi|fr|he|hi|hr|hu|id|it|ja|ko|lt|lv|ms|nl|no|pl|pt|ro|ru|sk|sl|sv|th|tl|tr|uk|vi|zh,option,description=Output language"`
-	OptPointOfView string `spec:"title=Point of View,value=third_person,enum=first_person_singular|first_person_plural|third_person,option,description=Article perspective"`
-	OptComparisonTable bool `spec:"title=Comparison Table,value=true,option,description=Include a comparison table in the article"`
-	OptIncludePricing bool `spec:"title=Include Pricing,value=true,option,description=Include product pricing information"`
-	OptIncludeRating bool `spec:"title=Include Rating,value=true,option,description=Include product ratings"`
-	OptOptimizeFor string `spec:"title=Optimize Output For,value=seo,enum=seo|blog_post|social_media|email_newsletter|affiliate_marketing,option,description=Output optimization target"`
-	OptLLMModel string `spec:"title=LLM Model,value=enhanced,enum=basic|enhanced,option,description=AI model quality level"`
-	OptCoverImageStyle string `spec:"title=Cover Image Style,value=generative,enum=generative|product,option,description=Cover image generation style"`
-	OptVisualStyle string `spec:"title=Visual Style,value=basic,enum=basic|charts,option,description=Visual presentation style"`
-	OptLayoutStyle string `spec:"title=Layout Style,value=product_box,enum=product_box|showcase|youtube,option,description=Article layout style"`
-	OptTemplateType string `spec:"title=Template Type,value=default,enum=default|awards,option,description=Article template type"`
+	// Product selection
+	OptProductType        string `spec:"title=Product Type,value=,enum=|amazon|appsumo|envato|unified,enumNames=Auto|Amazon|AppSumo|Envato|Unified,option,description=Product source type. Auto detects from URLs"`
+	OptProductsCount      int    `spec:"title=Products Count,value=0,option,description=Number of products to select. Zero means auto. Maximum 50"`
+	OptProductsSearchQuery runtime.OptVariable[interface{}] `spec:"title=Search Queries,type=object,scope=Message,name=productsSearchQueries,messageScope,jsScope,customScope,description=Array of search queries for product selection. Maximum 10"`
+	OptAmazonProductASINs  runtime.OptVariable[interface{}] `spec:"title=Amazon ASINs,type=object,scope=Message,name=amazonProductAsins,messageScope,jsScope,customScope,description=Array of Amazon ASINs. Maximum 50"`
+	OptProductURLs         runtime.OptVariable[interface{}] `spec:"title=Product URLs,type=object,scope=Message,name=productUrls,messageScope,jsScope,customScope,description=Array of product URLs for unified type. Maximum 50"`
 
-	// === CREDENTIAL ===
-	OptAPIKey runtime.Credential `spec:"title=API Key,scope=Custom,category=4,customScope,messageScope"`
+	// Style options
+	OptToneOfVoice       string `spec:"title=Tone of Voice,value=,enum=|Conversational|Informative|Persuasive|Humorous|Inspirational|Reflective|Authoritative|Critical|Formal|Cautionary|Sarcastic,enumNames=Default|Conversational|Informative|Persuasive|Humorous|Inspirational|Reflective|Authoritative|Critical|Formal|Cautionary|Sarcastic,option,description=Writing tone for the article"`
+	OptLanguage          string `spec:"title=Language,value=,enum=|English|English (UK)|German|Japanese|French|Italian|Spanish|Chinese (Simplified)|Chinese (Traditional)|Portuguese (Brazil)|Dutch|Korean|Russian|Arabic|Turkish|Polish|Swedish|Hindi,option,description=Output language"`
+	OptPointOfView       string `spec:"title=Point of View,value=,enum=|second_person|first_person|third_person,enumNames=Default|Second Person|First Person|Third Person,option,description=Narrative perspective"`
+	OptComparisonTable   bool   `spec:"title=Comparison Table,value=false,option,description=Include a comparison table"`
+	OptIncludePricing    bool   `spec:"title=Include Pricing,value=false,option,description=Include product pricing information"`
+	OptIncludeRating     bool   `spec:"title=Include Rating,value=false,option,description=Include product ratings"`
+	OptLLMModel          string `spec:"title=LLM Model,value=basic,enum=basic|enhanced,enumNames=Basic|Enhanced,option,description=AI model quality"`
+	OptCoverImageStyle   string `spec:"title=Cover Image Style,value=,enum=|generative|product,enumNames=Default|Generative|Product,option,description=OG cover image style"`
+	OptVisualStyle       string `spec:"title=Visual Style,value=basic,enum=basic|charts,enumNames=Basic|Charts,option,description=Article visual style"`
+	OptLayoutStyle       string `spec:"title=Layout Style,value=product_box,enum=product_box|showcase|youtube,enumNames=Product Box|Showcase|YouTube,option,description=Article layout style"`
+	OptTemplateType      string `spec:"title=Template Type,value=default,enum=default|awards,enumNames=Default|Awards,option,description=Article template type"`
+	OptOptimizeOutputFor string `spec:"title=Optimize For,value=,enum=|roundups_ai|wordpress|ghost_cms|email_distribution|medium,enumNames=Default|Roundups AI|WordPress|Ghost CMS|Email Distribution|Medium,option,description=Output optimization target"`
+	OptCustomCTA         string `spec:"title=Custom CTA,value=,option,description=Custom call-to-action text"`
+	OptProductCoverCount int    `spec:"title=Product Cover Count,value=0,option,description=Number of product images on OG cover. Range 1 to 10 when cover_image-style is product"`
 
-	// === OUTPUTS ===
-	OutRoundupID runtime.OutVariable[string] `spec:"title=Roundup ID,type=string,scope=Message,name=roundupId,messageScope"`
+	// Outputs
+	OutRoundupID runtime.OutVariable[int]         `spec:"title=Roundup ID,type=int,scope=Message,name=roundupId,messageScope"`
+	OutState     runtime.OutVariable[string]      `spec:"title=State,type=string,scope=Message,name=state,messageScope"`
+	OutHeadline  runtime.OutVariable[string]      `spec:"title=Headline,type=string,scope=Message,name=headline,messageScope"`
+	OutResponse  runtime.OutVariable[interface{}] `spec:"title=Full Response,type=object,scope=Message,name=response,messageScope"`
 }
 
 func (n *CreateRoundup) OnCreate() error { return nil }
 
 func (n *CreateRoundup) OnMessage(ctx message.Context) error {
-	headline, err := n.InHeadline.Get(ctx)
-	if err != nil {
-		return err
-	}
-	targetAudience, err := n.InTargetAudience.Get(ctx)
-	if err != nil {
-		return err
-	}
-	keywords, err := n.InKeywords.Get(ctx)
+	// Get API key
+	item, err := n.OptAPIKey.Get(ctx)
 	if err != nil {
 		return err
 	}
 
-	cred, err := n.OptAPIKey.Get(ctx)
-	if err != nil {
-		return err
-	}
-	if cred == nil {
-		return runtime.NewError("ErrInvalidArg", "API Key is required")
-	}
-	apiKey, _ := cred["value"].(string)
-
-	productsCount, _ := n.OptProductsCount.Get(ctx)
-	searchQueries, _ := n.OptSearchQueries.Get(ctx)
-	amazonASINs, _ := n.OptAmazonASINs.Get(ctx)
-	productURLs, _ := n.OptProductURLs.Get(ctx)
-
-	body := map[string]interface{}{
-		"headline":        headline,
-		"target_audience": targetAudience,
-		"keywords":        keywords,
+	token, ok := item["value"].(string)
+	if !ok || token == "" {
+		return runtime.NewError("ErrInvalidArg", "Missing API Key value")
 	}
 
-	if productsCount > 0 {
-		body["products_count"] = productsCount
+	client := NewRoundupsClient(token)
+
+	// Build request
+	req := &CreateRoundupRequest{}
+
+	// Input parameters (at least one)
+	if headline, err := n.OptHeadline.Get(ctx); err == nil && headline != "" {
+		req.Headline = headline
 	}
-	if searchQueries != "" {
-		body["products_search_queries"] = searchQueries
+	if audience, err := n.OptTargetAudience.Get(ctx); err == nil && audience != "" {
+		req.TargetAudience = audience
 	}
-	if amazonASINs != "" {
-		body["amazon_product_asins"] = amazonASINs
+	if keywords, err := n.OptKeywords.Get(ctx); err == nil && keywords != "" {
+		req.Keywords = keywords
 	}
-	if productURLs != "" {
-		body["product_urls"] = productURLs
+
+	// Validate at least one required parameter
+	if req.Headline == "" && req.TargetAudience == "" && req.Keywords == "" {
+		return runtime.NewError("ErrInvalidArg", "At least one of Headline, Target Audience, or Keywords must be provided")
 	}
+
+	// Product selection
 	if n.OptProductType != "" {
-		body["product_type"] = n.OptProductType
+		req.ProductType = n.OptProductType
 	}
-	if n.OptTone != "" {
-		body["tone_of_voice"] = n.OptTone
+	if n.OptProductsCount < 0 {
+		return runtime.NewError("ErrInvalidArg", "Products Count must be non-negative")
+	}
+	if n.OptProductsCount > 0 {
+		if n.OptProductsCount > 50 {
+			return runtime.NewError("ErrInvalidArg", "Products Count must not exceed 50")
+		}
+		req.ProductsCount = n.OptProductsCount
+	}
+
+	// Parse array inputs — handles both []interface{} and []string
+	if searchQueries, err := n.OptProductsSearchQuery.Get(ctx); err == nil && searchQueries != nil {
+		queries, err := parseStringArray(searchQueries)
+		if err != nil {
+			return runtime.NewError("ErrInvalidArg", "Search Queries must be an array of strings")
+		}
+		req.ProductsSearchQuery = queries
+		if len(req.ProductsSearchQuery) > 10 {
+			return runtime.NewError("ErrInvalidArg", "Search Queries must not exceed 10 items")
+		}
+	}
+
+	if asins, err := n.OptAmazonProductASINs.Get(ctx); err == nil && asins != nil {
+		asinList, err := parseStringArray(asins)
+		if err != nil {
+			return runtime.NewError("ErrInvalidArg", "Amazon ASINs must be an array of strings")
+		}
+		req.AmazonProductASINs = asinList
+		if len(req.AmazonProductASINs) > 50 {
+			return runtime.NewError("ErrInvalidArg", "Amazon ASINs must not exceed 50 items")
+		}
+	}
+
+	if urls, err := n.OptProductURLs.Get(ctx); err == nil && urls != nil {
+		urlList, err := parseStringArray(urls)
+		if err != nil {
+			return runtime.NewError("ErrInvalidArg", "Product URLs must be an array of strings")
+		}
+		req.ProductURLs = urlList
+		if len(req.ProductURLs) > 50 {
+			return runtime.NewError("ErrInvalidArg", "Product URLs must not exceed 50 items")
+		}
+	}
+
+	// Validation: unified type requires product_urls
+	if req.ProductType == "unified" && len(req.ProductURLs) == 0 {
+		return runtime.NewError("ErrInvalidArg", "Product URLs are required when Product Type is Unified")
+	}
+
+	// Style options
+	styles := &StyleOptions{}
+	hasStyles := false
+
+	if n.OptToneOfVoice != "" {
+		styles.ToneOfVoice = n.OptToneOfVoice
+		hasStyles = true
 	}
 	if n.OptLanguage != "" {
-		body["language"] = n.OptLanguage
+		styles.Language = n.OptLanguage
+		hasStyles = true
 	}
 	if n.OptPointOfView != "" {
-		body["point_of_view"] = n.OptPointOfView
+		switch n.OptPointOfView {
+		case "second_person":
+			styles.PointOfView = "Second Person (You)"
+		case "first_person":
+			styles.PointOfView = "First Person (I, We)"
+		case "third_person":
+			styles.PointOfView = "Third Person (He, She, They, It)"
+		default:
+			styles.PointOfView = n.OptPointOfView
+		}
+		hasStyles = true
 	}
-	body["comparison_table_enabled"] = n.OptComparisonTable
-	body["include_pricing"] = n.OptIncludePricing
-	body["include_rating"] = n.OptIncludeRating
-	if n.OptOptimizeFor != "" {
-		body["optimize_output_for"] = n.OptOptimizeFor
+	if n.OptComparisonTable {
+		styles.ComparisonTable = boolPtr(true)
+		hasStyles = true
+	}
+	if n.OptIncludePricing {
+		styles.IncludePricing = boolPtr(true)
+		hasStyles = true
+	}
+	if n.OptIncludeRating {
+		styles.IncludeRating = boolPtr(true)
+		hasStyles = true
 	}
 	if n.OptLLMModel != "" {
-		body["llm_model"] = n.OptLLMModel
+		styles.LLMModel = n.OptLLMModel
+		hasStyles = true
 	}
 	if n.OptCoverImageStyle != "" {
-		body["cover_image_style"] = n.OptCoverImageStyle
+		styles.CoverImageStyle = n.OptCoverImageStyle
+		hasStyles = true
 	}
 	if n.OptVisualStyle != "" {
-		body["visual_style"] = n.OptVisualStyle
+		styles.VisualStyle = n.OptVisualStyle
+		hasStyles = true
 	}
 	if n.OptLayoutStyle != "" {
-		body["layout_style"] = n.OptLayoutStyle
+		styles.LayoutStyle = n.OptLayoutStyle
+		hasStyles = true
 	}
 	if n.OptTemplateType != "" {
-		body["template_type"] = n.OptTemplateType
+		styles.TemplateType = n.OptTemplateType
+		hasStyles = true
+	}
+	if n.OptOptimizeOutputFor != "" {
+		styles.OptimizeOutputFor = n.OptOptimizeOutputFor
+		hasStyles = true
+	}
+	if n.OptCustomCTA != "" {
+		styles.CustomCTA = n.OptCustomCTA
+		hasStyles = true
+	}
+	if n.OptProductCoverCount < 0 {
+		return runtime.NewError("ErrInvalidArg", "Product Cover Count must be non-negative")
+	}
+	if n.OptProductCoverCount > 0 {
+		if n.OptCoverImageStyle != "product" {
+			return runtime.NewError("ErrInvalidArg", "Product Cover Count only applies when Cover Image Style is set to product")
+		}
+		if n.OptProductCoverCount > 10 {
+			return runtime.NewError("ErrInvalidArg", "Product Cover Count must be between 1 and 10")
+		}
+		styles.ProductCount = n.OptProductCoverCount
+		hasStyles = true
 	}
 
-	jsonBody, err := json.Marshal(body)
+	if hasStyles {
+		req.Styles = styles
+	}
+
+	// Call API
+	resp, err := client.CreateRoundup(req)
 	if err != nil {
-		return runtime.NewError("ErrInvalidJSON", "Failed to marshal request body: "+err.Error())
+		return err
 	}
 
-	req, err := http.NewRequest("POST", "https://roundups.ai/api/v1/roundups", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return runtime.NewError("ErrRequestFailed", "Failed to create request: "+err.Error())
+	// Set outputs
+	if err := n.OutRoundupID.Set(ctx, resp.ID); err != nil {
+		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return runtime.NewError("ErrRequestFailed", "HTTP request failed: "+err.Error())
+	if err := n.OutState.Set(ctx, resp.State); err != nil {
+		return err
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return runtime.NewError("ErrResponseRead", "Failed to read response: "+err.Error())
+	if err := n.OutHeadline.Set(ctx, resp.Headline); err != nil {
+		return err
 	}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return runtime.NewError("ErrRequestFailed", fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(respBody)))
+	// Full response as JSON
+	respJSON, _ := json.Marshal(map[string]interface{}{
+		"id":         resp.ID,
+		"headline":   resp.Headline,
+		"state":      resp.State,
+		"created_at": resp.CreatedAt,
+		"updated_at": resp.UpdatedAt,
+		"article":    resp.Article,
+		"errors":     resp.Errors,
+	})
+	var respMap map[string]interface{}
+	json.Unmarshal(respJSON, &respMap)
+	if err := n.OutResponse.Set(ctx, respMap); err != nil {
+		return err
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return runtime.NewError("ErrInvalidJSON", "Failed to parse response JSON: "+err.Error())
-	}
-
-	roundupID, ok := result["id"].(string)
-	if !ok {
-		return runtime.NewError("ErrInvalidJSON", "Response missing roundup ID")
-	}
-
-	return n.OutRoundupID.Set(ctx, roundupID)
+	return nil
 }
 
 func (n *CreateRoundup) OnClose() error { return nil }
+
+func boolPtr(b bool) *bool {
+	return &b
+}

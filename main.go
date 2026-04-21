@@ -1,8 +1,9 @@
 package main
 
 import (
+	"roundups/v1"
+
 	"github.com/robomotionio/robomotion-go/runtime"
-	"github.com/robomotionio/robomotion-roundups/v1"
 )
 
 func main() {

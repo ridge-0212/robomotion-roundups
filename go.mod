@@ -1,5 +1,5 @@
-module github.com/robomotionio/robomotion-roundups
+module roundups
 
-go 1.24.0
+go 1.21
 
-require github.com/robomotionio/robomotion-go v0.15.0
+require github.com/robomotionio/robomotion-go v1.1.2
