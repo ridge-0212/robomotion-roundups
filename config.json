@@ -3,7 +3,7 @@
   "namespace": "Robomotion.Roundups",
   "version": "1.0.5",
   "keywords": ["roundups", "ai", "article", "content", "generation", "product"],
-  "categories": ["AI & ML"],
+  "category": 6,
   "description": "Generate AI-powered roundup articles with Roundups.ai",
   "icon": "icon.png",
   "language": "Go",

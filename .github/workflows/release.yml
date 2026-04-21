@@ -41,10 +41,10 @@ jobs:
 
       - name: Build for all platforms
         run: |
-          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -o dist/robomotion-roundups
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o dist/robomotion-roundups.exe
-          CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -o dist/robomotion-roundups-darwin-amd64
-          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o dist/robomotion-roundups-darwin-arm64
+          roboctl package build --arch linux/amd64
+          roboctl package build --arch windows/amd64
+          roboctl package build --arch darwin/amd64
+          roboctl package build --arch darwin/arm64
 
       - name: Copy config
         run: cp config.json dist/config.json
