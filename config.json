@@ -1,0 +1,45 @@
+{
+	"name": "Roundups",
+	"namespace": "Robomotion.Roundups",
+	"version": "1.0.0",
+	"description": "Create and fetch AI-powered product roundup articles via roundups.ai API.",
+	"icon": "icon.png",
+	"keywords": [
+		"roundups",
+		"ai",
+		"content",
+		"article",
+		"product"
+	],
+	"categories": ["AI", "Content"],
+	"language": "Go",
+	"platforms": [
+		"linux",
+		"windows",
+		"darwin"
+	],
+	"author": {
+		"email": "support@robomotion.io",
+		"name": "Robomotion"
+	},
+	"scripts": {
+		"windows": {
+			"build": [
+				"go build -o dist/robomotion-roundups.exe"
+			],
+			"run": "robomotion-roundups.exe"
+		},
+		"linux": {
+			"build": [
+				"go build -o dist/robomotion-roundups"
+			],
+			"run": "robomotion-roundups"
+		},
+		"darwin": {
+			"build": [
+				"go build -o dist/robomotion-roundups"
+			],
+			"run": "robomotion-roundups"
+		}
+	}
+}
